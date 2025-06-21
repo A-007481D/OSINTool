@@ -1,9 +1,12 @@
 import os
 import json
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTextBrowser, QPushButton, QTabWidget
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTextBrowser, QPushButton, QTabWidget, QSplitter
+from PyQt5.QtCore import Qt
 
 from core.identity import TargetIdentity
 from core.correlation import find_correlations
+from core.graph import create_graph_from_identity
+from .graph_view import GraphView
 
 class TargetManager(QWidget):
     def __init__(self):
@@ -20,14 +23,17 @@ class TargetManager(QWidget):
         left_panel_layout.addWidget(self.target_list)
 
         # --- Data Display Tabs ---
-        self.data_tabs = QTabWidget()
-        self.raw_data_display = QTextBrowser()
-        self.correlation_display = QTextBrowser()
-        self.data_tabs.addTab(self.raw_data_display, "Raw Data")
-        self.data_tabs.addTab(self.correlation_display, "Correlations")
+        self.tabs = QTabWidget()
+        self.raw_data_view = QTextBrowser()
+        self.correlations_view = QTextBrowser()
+        self.graph_view = GraphView()
+
+        self.tabs.addTab(self.raw_data_view, "Raw Data")
+        self.tabs.addTab(self.correlations_view, "Correlations")
+        self.tabs.addTab(self.graph_view, "Graph")
 
         self.layout.addLayout(left_panel_layout, 1)
-        self.layout.addWidget(self.data_tabs, 3)
+        self.layout.addWidget(self.tabs, 3)
 
         self.populate_target_list()
 
@@ -51,11 +57,11 @@ class TargetManager(QWidget):
 
     def display_raw_data(self, target_name):
         target_dir = os.path.join("data", target_name)
-        self.raw_data_display.clear()
+        self.raw_data_view.clear()
         html = f"<h1>{target_name}</h1>"
 
         if not os.path.isdir(target_dir):
-            self.raw_data_display.setHtml(html)
+            self.raw_data_view.setHtml(html)
             return
 
         for filename in sorted(os.listdir(target_dir)):
@@ -78,20 +84,24 @@ class TargetManager(QWidget):
                 else:
                     html += self.format_dict_to_html_table(data)
         
-        self.raw_data_display.setHtml(html)
+        self.raw_data_view.setHtml(html)
 
     def display_correlations(self, target_name):
         identity = TargetIdentity(target_name)
         correlations = find_correlations(identity)
-        self.correlation_display.clear()
-        
+
+        # Update Correlations Tab
+        self.correlations_view.clear()
         corr_html = f"<h1>Correlations for {target_name}</h1>"
         if not any(correlations.values()):
-             corr_html += "<p>No correlations found.</p>"
+            corr_html += "<p>No correlations found.</p>"
         else:
             corr_html += self.format_correlations_to_html(correlations)
+        self.correlations_view.setHtml(corr_html)
 
-        self.correlation_display.setHtml(corr_html)
+        # Update Graph View
+        graph = create_graph_from_identity(identity, correlations)
+        self.graph_view.update_graph(graph)
 
     def format_correlations_to_html(self, correlations):
         html = ""
