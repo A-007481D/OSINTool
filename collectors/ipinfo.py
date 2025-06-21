@@ -1,5 +1,6 @@
 from ipwhois import IPWhois
 from ipwhois.exceptions import IPDefinedError
+from core.json_utils import safe_json_dump
 
 def get_ip_info(ip_address):
     """

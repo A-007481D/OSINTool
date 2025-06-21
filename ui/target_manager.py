@@ -7,6 +7,7 @@ from core.identity import TargetIdentity
 from core.correlation import find_correlations
 from core.graph import create_graph_from_identity
 from .graph_view import GraphView
+from core.json_utils import safe_json_dump
 
 class TargetManager(QWidget):
     def __init__(self):
@@ -63,9 +64,14 @@ class TargetManager(QWidget):
         data_dir = "data"
         if not os.path.exists(data_dir):
             return
-        # Show .json files as saved targets
-        targets = [f[:-5] for f in os.listdir(data_dir) if f.endswith('.json')]
-        self.target_list.addItems(targets)
+        # Recursively find all .json files in data/
+        json_targets = []
+        for root, dirs, files in os.walk(data_dir):
+            for file in files:
+                if file.endswith('.json'):
+                    rel_path = os.path.relpath(os.path.join(root, file), data_dir)
+                    json_targets.append(rel_path[:-5])  # Remove .json
+        self.target_list.addItems(sorted(json_targets))
 
     def display_target_data(self, item):
         target_name = item.text()
@@ -101,7 +107,7 @@ class TargetManager(QWidget):
             return
         path = os.path.join(data_dir, f"{name}.json")
         with open(path, 'w') as f:
-            json.dump(entries, f, indent=2)
+            safe_json_dump(entries, f, indent=2)
         self.populate_target_list()
 
     def load_target(self):

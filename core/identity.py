@@ -1,5 +1,6 @@
 import os
 import json
+from core.json_utils import safe_json_dump
 
 class TargetIdentity:
     """

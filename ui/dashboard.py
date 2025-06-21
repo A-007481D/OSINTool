@@ -7,6 +7,7 @@ from collectors.sherlock import scan_username, RealtimeNotifier
 from collectors.whois import get_whois_info
 from collectors.ipinfo import get_ip_info
 from ui.target_manager import TargetManager
+from core.json_utils import safe_json_dump
 
 class Worker(QObject):
     finished = pyqtSignal()
@@ -147,7 +148,7 @@ class Dashboard(QMainWindow):
 
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(self.current_results, f, indent=4)
+                safe_json_dump(self.current_results, f, indent=4)
             self.statusBar().showMessage(f"Results saved to {file_path}", 5000)
             self.target_manager_widget.populate_target_list()
         except Exception as e:
