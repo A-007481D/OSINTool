@@ -1,6 +1,6 @@
 import os
 import json
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTextBrowser, QPushButton, QTabWidget, QSplitter
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QTextBrowser, QPushButton, QTabWidget, QSplitter, QTextEdit, QInputDialog, QMessageBox
 from PyQt5.QtCore import Qt
 
 from core.identity import TargetIdentity
@@ -13,7 +13,7 @@ class TargetManager(QWidget):
         super().__init__()
         self.layout = QHBoxLayout(self)
 
-        # --- Target List ---
+        # --- Target List & Management ---
         left_panel_layout = QVBoxLayout()
         self.target_list = QListWidget()
         self.target_list.itemClicked.connect(self.display_target_data)
@@ -21,6 +21,27 @@ class TargetManager(QWidget):
         self.refresh_button.clicked.connect(self.populate_target_list)
         left_panel_layout.addWidget(self.refresh_button)
         left_panel_layout.addWidget(self.target_list)
+
+        # --- Multi-Target Input ---
+        self.input_box = QTextEdit()
+        self.input_box.setPlaceholderText("Enter usernames/emails (comma or newline separated)")
+        left_panel_layout.addWidget(self.input_box)
+
+        # --- Management Buttons ---
+        btn_layout = QHBoxLayout()
+        self.save_btn = QPushButton("Save Target")
+        self.save_btn.clicked.connect(self.save_target)
+        self.load_btn = QPushButton("Load Target")
+        self.load_btn.clicked.connect(self.load_target)
+        self.delete_btn = QPushButton("Delete Target")
+        self.delete_btn.clicked.connect(self.delete_target)
+        self.send_btn = QPushButton("Send to Scan")
+        # Placeholder: connect to signal for future integration
+        btn_layout.addWidget(self.save_btn)
+        btn_layout.addWidget(self.load_btn)
+        btn_layout.addWidget(self.delete_btn)
+        btn_layout.addWidget(self.send_btn)
+        left_panel_layout.addLayout(btn_layout)
 
         # --- Data Display Tabs ---
         self.tabs = QTabWidget()
@@ -42,18 +63,66 @@ class TargetManager(QWidget):
         data_dir = "data"
         if not os.path.exists(data_dir):
             return
-        
-        targets = [d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d))]
+        # Show .json files as saved targets
+        targets = [f[:-5] for f in os.listdir(data_dir) if f.endswith('.json')]
         self.target_list.addItems(targets)
 
     def display_target_data(self, item):
         target_name = item.text()
         
+        # Display input box content for selected target
+        data_dir = "data"
+        path = os.path.join(data_dir, f"{target_name}.json")
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                try:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        self.input_box.setPlainText("\n".join(data))
+                except Exception:
+                    self.input_box.setPlainText("")
         # --- Display Raw Data ---
         self.display_raw_data(target_name)
-
         # --- Display Correlations ---
         self.display_correlations(target_name)
+
+    def save_target(self):
+        # Prompt for target profile name
+        name, ok = QInputDialog.getText(self, "Save Target", "Enter a name for this target profile:")
+        if not ok or not name.strip():
+            return
+        data_dir = "data"
+        os.makedirs(data_dir, exist_ok=True)
+        # Parse input (split by comma/newline, strip, dedup)
+        entries = self.input_box.toPlainText().replace(",", "\n").split("\n")
+        entries = sorted(set([x.strip() for x in entries if x.strip()]))
+        if not entries:
+            QMessageBox.warning(self, "No Data", "No usernames or emails entered.")
+            return
+        path = os.path.join(data_dir, f"{name}.json")
+        with open(path, 'w') as f:
+            json.dump(entries, f, indent=2)
+        self.populate_target_list()
+
+    def load_target(self):
+        item = self.target_list.currentItem()
+        if not item:
+            QMessageBox.warning(self, "No Selection", "Select a target to load.")
+            return
+        self.display_target_data(item)
+
+    def delete_target(self):
+        item = self.target_list.currentItem()
+        if not item:
+            QMessageBox.warning(self, "No Selection", "Select a target to delete.")
+            return
+        name = item.text()
+        data_dir = "data"
+        path = os.path.join(data_dir, f"{name}.json")
+        if os.path.exists(path):
+            os.remove(path)
+        self.populate_target_list()
+        self.input_box.clear()
 
     def display_raw_data(self, target_name):
         target_dir = os.path.join("data", target_name)

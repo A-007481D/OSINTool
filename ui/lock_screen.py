@@ -12,7 +12,7 @@ class LockScreen(QDialog):
         super().__init__()
         self.setWindowTitle('OSINT Intelligence Terminal - Unlock')
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint)
-        self.setFixedSize(350, 180)
+        self.setFixedSize(420, 240)
         self.setup_ui()
         self.load_or_init_password()
 
@@ -24,8 +24,11 @@ class LockScreen(QDialog):
         self.button.clicked.connect(self.check_password)
         layout = QVBoxLayout()
         layout.addWidget(self.label)
+        layout.addSpacing(18)
         layout.addWidget(self.input)
+        layout.addSpacing(18)
         layout.addWidget(self.button)
+        layout.addStretch()
         self.setLayout(layout)
 
     def load_or_init_password(self):
