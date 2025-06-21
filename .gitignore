@@ -27,7 +27,7 @@ ENV/
 
 # Data files
 data/
-*.json
+data/**/*.json
 *.db
 *.sqlite3
 

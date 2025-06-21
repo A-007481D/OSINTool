@@ -1,4 +1,5 @@
 import os
+import shutil
 from sherlock import sherlock
 from notify import QueryNotify
 from sites import SitesInformation
@@ -60,6 +61,13 @@ def scan_username(username, notifier=None):
     query_notify = notifier if notifier else RealtimeNotifier(total_sites=total_sites)
     # The sherlock function is blocking, but our notifier will give us live results.
     sherlock(username, site_data_for_sherlock, query_notify, timeout=60)
+
+    # Permanently fix the caching issue by deleting the created folder.
+    if os.path.isdir(username):
+        try:
+            shutil.rmtree(username)
+        except OSError as e:
+            print(f"Error removing directory {username}: {e}")
 
     # The results will be collected via the notifier's signals, so we return nothing here.
     # The original return value is now redundant.
