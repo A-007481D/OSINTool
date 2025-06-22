@@ -1,4 +1,5 @@
 import whois
+from core.json_utils import safe_json_dump
 
 def get_whois_info(domain):
     """

@@ -1,7 +1,7 @@
 import json
 import os
-from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QTextBrowser, QComboBox, QTabWidget, QProgressBar
-from PyQt5.QtCore import QObject, QThread, pyqtSignal
+from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QTextBrowser, QComboBox, QTabWidget, QProgressBar, QLabel, QScrollArea, QFrame
+from PyQt5.QtCore import QObject, QThread, pyqtSignal, Qt
 
 from collectors.sherlock import scan_username, RealtimeNotifier
 from collectors.whois import get_whois_info
@@ -67,16 +67,13 @@ class Dashboard(QMainWindow):
     def setup_live_scan_ui(self):
         live_scan_layout = QVBoxLayout(self.live_scan_widget)
 
+        # --- Input Area ---
         input_layout = QHBoxLayout()
         self.target_input = QLineEdit()
-        self.target_input.setPlaceholderText("Enter target (username, domain, IP)")
         self.scan_type_combo = QComboBox()
-        self.scan_type_combo.addItems(["Username", "Domain", "IP Address"])
+        self.scan_type_combo.addItems(["Username", "Real Name", "Domain", "IP Address"])
         self.scan_button = QPushButton("Scan")
-        self.scan_button.clicked.connect(self.start_scan)
         self.save_button = QPushButton("Save Results")
-        self.save_button.clicked.connect(self.save_results)
-        self.save_button.setEnabled(False)
 
         input_layout.addWidget(self.target_input)
         input_layout.addWidget(self.scan_type_combo)
@@ -84,13 +81,37 @@ class Dashboard(QMainWindow):
         input_layout.addWidget(self.save_button)
         live_scan_layout.addLayout(input_layout)
 
+        # --- Progress Bar ---
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         live_scan_layout.addWidget(self.progress_bar)
 
-        self.results_display = QTextBrowser()
-        self.results_display.setPlaceholderText("Results will be displayed here...")
-        live_scan_layout.addWidget(self.results_display)
+        # --- Profile Card Scroll Area ---
+        self.card_scroll = QScrollArea()
+        self.card_scroll.setWidgetResizable(True)
+        self.card_container = QWidget()
+        self.card_layout = QVBoxLayout(self.card_container)
+        self.card_layout.setAlignment(Qt.AlignTop)
+        self.card_scroll.setWidget(self.card_container)
+        live_scan_layout.addWidget(self.card_scroll)
+
+        # --- Connections and Initial State ---
+        self.scan_button.clicked.connect(self.start_scan)
+        self.save_button.clicked.connect(self.save_results)
+        self.save_button.setEnabled(False)
+        self.scan_type_combo.currentIndexChanged.connect(self.update_input_placeholder)
+        self.update_input_placeholder() # Set initial placeholder
+
+    def update_input_placeholder(self):
+        scan_type = self.scan_type_combo.currentText()
+        if scan_type == "Username":
+            self.target_input.setPlaceholderText("Enter username")
+        elif scan_type == "Real Name":
+            self.target_input.setPlaceholderText("Enter full name")
+        elif scan_type == "Domain":
+            self.target_input.setPlaceholderText("Enter domain (e.g. example.com)")
+        elif scan_type == "IP Address":
+            self.target_input.setPlaceholderText("Enter IP address")
 
     def start_scan(self):
         self.target = self.target_input.text()
@@ -104,12 +125,15 @@ class Dashboard(QMainWindow):
         self.save_button.setEnabled(False)
         self.current_results = []
         self.statusBar().showMessage(f"Scanning {self.current_scan_type} for '{self.target}'...")
-        self.results_display.clear()
+        # Clear profile cards
+        for i in reversed(range(self.card_layout.count())):
+            widget = self.card_layout.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
 
         if self.current_scan_type == "Username":
             self.progress_bar.setVisible(True)
             self.progress_bar.setValue(0)
-            self.results_display.setHtml("<h3>Found URLs:</h3><ul></ul>")
 
         self.thread = QThread()
         self.worker = Worker(self.current_scan_type, self.target)
@@ -131,8 +155,41 @@ class Dashboard(QMainWindow):
         self.progress_bar.setValue(value)
 
     def append_username_result(self, site, url, status):
-        self.current_results.append(url)
-        self.results_display.append(f"<li><a href='{url}'>{url}</a></li>")
+        # Enrich profile (async could be added later for speed)
+        enriched = self.enrich_profile(url, site)
+        self.current_results.append(enriched)
+        self.update_results_table()
+
+    def update_results_table(self):
+        # Clear previous cards
+        for i in reversed(range(self.card_layout.count())):
+            widget = self.card_layout.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
+        if not self.current_results:
+            label = QLabel("No profiles found.")
+            label.setStyleSheet("color: #ccc; font-size: 16px;")
+            self.card_layout.addWidget(label)
+            return
+        for entry in self.current_results:
+            card = ProfileCard(entry)
+            self.card_layout.addWidget(card)
+
+    def enrich_profile(self, url, site):
+        try:
+            from core.profile_enrich import enrich_profile as real_enrich
+            info = real_enrich(url, site)
+        except Exception:
+            info = {}
+        entry = {
+            "site": site,
+            "url": url,
+            "bio": info.get("bio", ""),
+            "avatar_url": info.get("avatar_url", ""),
+            "followers": info.get("followers", ""),
+            "following": info.get("following", "")
+        }
+        return entry
 
     def save_results(self):
         if not self.current_results:
@@ -171,14 +228,49 @@ class Dashboard(QMainWindow):
         return html
 
     def display_results(self, data):
-        if self.current_scan_type != "Username":
+        # Clear previous cards
+        for i in reversed(range(self.card_layout.count())):
+            widget = self.card_layout.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
+        if self.current_scan_type == "Real Name":
+            # Real person OSINT search
+            try:
+                from core.people_search import search_person
+                people = search_person(self.target)
+                if not people:
+                    card = QLabel("<span style='color:#ffb347;font-size:18px;'>No public profiles found for this name.</span>")
+                    self.card_layout.addWidget(card)
+                else:
+                    for entry in people:
+                        self.card_layout.addWidget(ProfileCard({
+                            "name": entry.get("name", ""),
+                            "site": entry.get("site", ""),
+                            "bio": entry.get("title", ""),
+                            "avatar_url": entry.get("avatar_url", ""),
+                            "location": entry.get("location", ""),
+                            "emails": entry.get("emails", []),
+                            "phones": entry.get("phones", []),
+                            "url": entry.get("profile_url", ""),
+                            "snippet": entry.get("snippet", "")
+                        }))
+                self.progress_bar.setVisible(False)
+            except Exception as e:
+                card = QLabel(f"<span style='color:red;'>Error searching for people: {e}</span>")
+                self.card_layout.addWidget(card)
+                self.progress_bar.setVisible(False)
+        elif self.current_scan_type != "Username":
+            # Show non-username results as a card
             self.current_results = data
             html = self.format_dict_to_html_table(data)
-            self.results_display.setHtml(html)
+            card = QLabel(html)
+            card.setStyleSheet("color: #eee; font-size: 15px;")
+            card.setTextFormat(Qt.RichText)
+            self.card_layout.addWidget(card)
+            self.progress_bar.setVisible(False)
         else:
             self.progress_bar.setVisible(False)
-            if not self.current_results:
-                 self.results_display.setText("No accounts found for this username.")
+            self.update_results_table()
 
         self.statusBar().showMessage("Scan finished.", 5000)
         self.scan_button.setEnabled(True)
@@ -187,6 +279,8 @@ class Dashboard(QMainWindow):
 
     def scan_error(self, error_message):
         self.progress_bar.setVisible(False)
-        self.results_display.setHtml(f"<p style='color: red;'>An error occurred:<br>{error_message}</p>")
+        # Show error in card area
+        error_label = QLabel(f"<p style='color: red;'>An error occurred:<br>{error_message}</p>")
+        self.card_layout.addWidget(error_label)
         self.statusBar().showMessage("Scan failed.", 5000)
         self.scan_button.setEnabled(True)
